@@ -16,6 +16,8 @@ app = FastAPI()
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:3000", 
+    "http://127.0.0.1:3000"
 ]
 
 app.add_middleware(
@@ -164,11 +166,11 @@ def seed_data():
         
         # Create Encrypted Courses
         courses_data = [
-            ("Mathematics 101", "Introduction to Calculus"),
-            ("Physics 202", "Advanced Mechanics"),
-            ("Chemistry 303", "Organic Chemistry"),
-            ("History 101", "World History"),
-            ("Computer Science 101", "Intro to Programming"),
+            ("Matemática Básica", "Curso de introdução a cálculo e álgebra."),
+            ("Programação Web", "Fundamentos de HTML, CSS e JavaScript."),
+            ("Segurança da Informação", "Criptografia, hashes e segurança."),
+            ("Banco de Dados", "Modelagem relacional e SQL."),
+            ("Redes de Computadores", "TCP/IP, DNS, protocolos e infraestrutura.")
         ]
         
         for name, desc in courses_data:

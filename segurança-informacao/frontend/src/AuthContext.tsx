@@ -25,7 +25,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setRole(newRole);
     setUsername(newUsername);
     
-    // Set default auth header for axios
     axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
   };
 
