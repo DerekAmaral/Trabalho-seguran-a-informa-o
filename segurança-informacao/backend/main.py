@@ -7,39 +7,46 @@ from pydantic import BaseModel
 
 import models, auth, database, crypto_utils
 
-# Create DB Tables
+# -------------------------------------------------------------------
+#   Criação das tabelas no banco de dados, caso não existam
+# -------------------------------------------------------------------
 models.Base.metadata.create_all(bind=database.engine)
 
+# Instância principal da aplicação FastAPI
 app = FastAPI()
 
-# CORS for React
+# -------------------------------------------------------------------
+#   Configuração de CORS – necessário para permitir acesso do React
+# -------------------------------------------------------------------
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:3000", 
+    "http://localhost:3000",
     "http://127.0.0.1:3000"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins,         # Endereços autorizados para acessar a API
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],           # Permite todos os métodos HTTP
+    allow_headers=["*"],           # Permite todos os headers
 )
 
-# --- Pydantic Models ---
+# -------------------------------------------------------------------
+#   Modelos Pydantic – usados para entrada e saída de dados
+# -------------------------------------------------------------------
 class UserBase(BaseModel):
     username: str
 
 class UserCreate(UserBase):
     password: str
-    role: models.UserRole
+    role: models.UserRole           # Enum do SQLAlchemy
 
 class UserDisplay(UserBase):
     role: str
     class Config:
-        from_attributes = True
+        from_attributes = True      # Permite converter automaticamente de modelo SQLAlchemy
 
 class Token(BaseModel):
     access_token: str
@@ -54,29 +61,54 @@ class CourseDisplay(BaseModel):
     class Config:
         from_attributes = True
 
-# --- Auth Dependencies ---
+
+# -------------------------------------------------------------------
+#   Configuração de Autenticação OAuth2 (JWT)
+# -------------------------------------------------------------------
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Obtém o usuário logado a partir do token JWT.
+    - Decodifica o token
+    - Valida o usuário no banco
+    - Retorna o objeto User
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
     try:
+        # Decodifica o token JWT
         payload = auth.jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         username: str = payload.get("sub")
+        
+        # Verifica se há username válido
         if username is None:
             raise credentials_exception
     except auth.JWTError:
         raise credentials_exception
     
+    # Busca usuário no banco
     user = db.query(models.User).filter(models.User.username == username).first()
+    
     if user is None:
         raise credentials_exception
+
     return user
 
+
 def require_role(role: str):
+    """
+    Middleware de autorização baseado em papéis (RBAC).
+    - Permite acesso ao endpoint apenas se o usuário tiver o papel especificado.
+    """
     def role_checker(current_user: models.User = Depends(get_current_user)):
         if current_user.role != role:
             raise HTTPException(
@@ -86,11 +118,24 @@ def require_role(role: str):
         return current_user
     return role_checker
 
-# --- Endpoints ---
+
+# -------------------------------------------------------------------
+#   ENDPOINTS
+# -------------------------------------------------------------------
 
 @app.post("/auth/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Endpoint de login.
+    - Verifica se usuário e senha estão corretos
+    - Gera um token JWT com nome e papel do usuário
+    """
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
+    
+    # Credenciais inválidas
     if not user or not auth.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -98,35 +143,57 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    # Cria token de acesso com tempo de expiração
     access_token_expires = auth.timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
-        data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
+        data={"sub": user.username, "role": user.role},
+        expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "username": user.username}
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": user.role,
+        "username": user.username
+    }
+
 
 @app.get("/api/students", dependencies=[Depends(require_role("student"))])
 def read_student_area():
+    """
+    Área acessível apenas por usuários com papel 'student'.
+    """
     return {"message": "Welcome to the Student Area", "data": "Exclusive Student Content"}
+
 
 @app.get("/api/teachers", dependencies=[Depends(require_role("teacher"))])
 def read_teacher_area():
+    """
+    Área acessível apenas por usuários com papel 'teacher'.
+    """
     return {"message": "Welcome to the Teacher Area", "data": "Exclusive Teacher Content"}
 
+
 @app.get("/api/courses", response_model=List[CourseDisplay])
-def search_courses(search: Optional[str] = Query(None), db: Session = Depends(database.get_db)):
+def search_courses(
+    search: Optional[str] = Query(None),
+    db: Session = Depends(database.get_db)
+):
     """
-    Public search interface.
-    Fetches encrypted data, decrypts it, and filters based on search term.
-    This fulfills the requirement of searching on encrypted data.
+    Busca pública de cursos.
+    - Faz consulta ao banco de dados
+    - Descriptografa nome e descrição
+    - Permite busca parcial (case-insensitive)
     """
     all_courses = db.query(models.Course).all()
     results = []
     
     for course in all_courses:
+        # Descriptografa campos
         decrypted_name = crypto_utils.decrypt_data(course.encrypted_name)
         decrypted_desc = crypto_utils.decrypt_data(course.encrypted_description)
         
-        # Simple case-insensitive search
+        # Se houver termo de busca, faz filtro
         if search:
             s_term = search.lower()
             if s_term in decrypted_name.lower() or s_term in decrypted_desc.lower():
@@ -136,7 +203,7 @@ def search_courses(search: Optional[str] = Query(None), db: Session = Depends(da
                     description=decrypted_desc
                 ))
         else:
-            # Return all if no search term
+            # Se não houver termo, retorna todos
             results.append(CourseDisplay(
                 id=course.id,
                 name=decrypted_name,
@@ -145,26 +212,38 @@ def search_courses(search: Optional[str] = Query(None), db: Session = Depends(da
             
     return results
 
-# --- Seed Data Helper ---
+
+# -------------------------------------------------------------------
+#   Função de Seed (popular o banco com dados iniciais)
+# -------------------------------------------------------------------
 def seed_data():
+    """
+    Insere usuários de teste e cursos criptografados
+    caso o banco esteja vazio.
+    """
     db = database.SessionLocal()
+
+    # Apenas insere se ainda não existirem usuários
     if not db.query(models.User).first():
-        # Create Student
+        
+        # Usuário estudante
         student = models.User(
             username="student1",
-            hashed_password=auth.get_password_hash("pass123"), # Salted hash
+            hashed_password=auth.get_password_hash("pass123"),
             role="student"
         )
-        # Create Teacher
+
+        # Usuário professor
         teacher = models.User(
             username="teacher1",
-            hashed_password=auth.get_password_hash("pass123"), # Salted hash
+            hashed_password=auth.get_password_hash("pass123"),
             role="teacher"
         )
+
         db.add(student)
         db.add(teacher)
         
-        # Create Encrypted Courses
+        # Cursos exemplo (dados serão criptografados)
         courses_data = [
             ("Matemática Básica", "Curso de introdução a cálculo e álgebra."),
             ("Programação Web", "Fundamentos de HTML, CSS e JavaScript."),
@@ -181,7 +260,9 @@ def seed_data():
             db.add(c)
             
         db.commit()
+
     db.close()
 
-# Run seed on startup
+
+# Executa o seed ao iniciar
 seed_data()

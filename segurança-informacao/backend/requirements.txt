@@ -1,8 +1,33 @@
+# ---------------------------------------------------------------------------
+# Este arquivo "requirements.txt" lista todas as dependências (bibliotecas)
+# necessárias para rodar o projeto. Ao instalar essas dependências com:
+#
+#     pip install -r requirements.txt
+#
+# o Python garante que a aplicação terá exatamente as versões corretas das
+# bibliotecas usadas durante o desenvolvimento, evitando erros de compatibilidade.
+# ---------------------------------------------------------------------------
+
 fastapi==0.109.0
+# Framework principal da API — rápido, moderno e baseado em Python async.
+
 uvicorn==0.27.0
+# Servidor ASGI utilizado para rodar a aplicação FastAPI.
+
 sqlalchemy==2.0.25
+# ORM usado para manipular o banco de dados de forma estruturada.
+
 pydantic==2.5.3
+# Biblioteca usada pelo FastAPI para validação de dados e criação de modelos.
+
 passlib[bcrypt]==1.7.4
+# Biblioteca para hashing seguro de senhas. O "[bcrypt]" habilita o algoritmo bcrypt.
+
 python-jose[cryptography]==3.3.0
+# Usado para gerar e validar tokens JWT. O "[cryptography]" adiciona algoritmos seguros.
+
 python-multipart==0.0.6
+# Necessário para lidar com formulários multipart/form-data (ex.: login OAuth2).
+
 cryptography==41.0.7
+# Biblioteca de baixo nível usada para criptografia, incluindo o Fernet usado no projeto.
