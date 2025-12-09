@@ -95,7 +95,7 @@ def get_current_user(
     except auth.JWTError:
         raise credentials_exception
     
-    # Busca usuário no banco
+    # Busca usuário no banco - busca usuário de forma segura usando SQLAlchemy ORM
     user = db.query(models.User).filter(models.User.username == username).first()
     
     if user is None:
