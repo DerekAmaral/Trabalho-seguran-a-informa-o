@@ -10,9 +10,9 @@ Este projeto é uma aplicação **fullstack** desenvolvida para gerenciar cursos
 - Python 3.x
 - FastAPI
 - SQLAlchemy (ORM)
-- SQLite (banco de dados)
+- SQLite (banco de dados - Mapeamento Objeto-Relacional)
 - Passlib (hashing de senhas)
-- Python-JOSE (JWT)
+- Python-JOSE (JWT - secrect token)
 - Cryptography (Fernet para criptografia de dados)
 
 **Frontend:**
